@@ -1,0 +1,21 @@
+Pygments==2.21.0
+bytestruct==0.2.0
+certifi==2026.10.19
+cffi==2.1.1
+chardet==7.7.0
+charset-normalizer==3.5.2
+click==8.5.0
+cryptography==50.0.2
+idna==3.20
+ifaddr==0.2.0
+ioregistry==0.0.6; sys_platform == "darwin"
+packaging==26.3
+prompt_toolkit==3.0.53
+psutil==7.2.2
+pygnuutils==0.1.1
+questionary==2.1.1
+requests==2.34.2
+rich==15.0.0
+typing_extensions==4.16.0
+urllib3==2.8.0
+wcwidth==0.9.3
