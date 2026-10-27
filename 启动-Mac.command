@@ -3,13 +3,16 @@ emulate -L zsh
 setopt PIPE_FAIL
 FINKA_SCRIPT_DIR=${0:A:h}
 cd "$FINKA_SCRIPT_DIR" || exit 1
+FINKA_BUNDLE="$FINKA_SCRIPT_DIR"
+source "$FINKA_BUNDLE/scripts/workspace.zsh" || exit 1
 FINKA_RC=1
 function finka_finish() {
   local FINKA_LAST_EXIT=$?
-  if [[ -n "${FINKA_BOOT_LOG:-}" ]]; then
+  if [[ -n "${FINKA_BOOT_LOG:-}" && -d "${FINKA_BOOT_LOG:h}" ]]; then
     print -r -- "[$(date '+%Y-%m-%d %H:%M:%S')] Launcher exit=$FINKA_LAST_EXIT" >> "$FINKA_BOOT_LOG"
     print -r -- "启动日志：$FINKA_BOOT_LOG"
   fi
+  finka_release_lock
   if [[ -t 0 && "${FINKA_HELPER_NO_PAUSE:-0}" != 1 ]]; then
     print '\n操作结束。按回车关闭窗口。'
     read -r FINKA_FINISH_INPUT
@@ -22,7 +25,13 @@ case "$(uname -m)" in
   x86_64) FINKA_PLATFORM='macos-x64' ;;
   *) print '暂不支持此处理器。'; exit 1 ;;
 esac
-FINKA_DATA_DIR=${FINKA_HELPER_DATA:-"$HOME/Library/Application Support/FinkaHelper"}
+finka_initialize || exit 1
+finka_acquire_lock || exit 1
+if [[ -e "$FINKA_WORK/.cleanup-request" || -L "$FINKA_WORK/.cleanup-request" ]]; then
+  [[ ! -L "$FINKA_WORK/.cleanup-request" && -f "$FINKA_WORK/.cleanup-request" && "$(cat "$FINKA_WORK/.cleanup-request")" == "$FINKA_MAGIC" ]] || { print '发现未知清理请求，已停止。'; exit 1; }
+  /bin/rm -f "$FINKA_WORK/.cleanup-request"
+fi
+FINKA_DATA_DIR="$FINKA_WORK"
 mkdir -p "$FINKA_DATA_DIR/logs" || exit 1
 FINKA_BOOT_LOG="$FINKA_DATA_DIR/logs/launcher-$(date '+%Y%m%d-%H%M%S').log"
 function finka_log() {
@@ -53,7 +62,19 @@ if [[ ! -x "$FINKA_PYTHON" || ! -f "$FINKA_RUNTIME_DIR/runtime.ready" || "$(cat 
   print -r -- "$FINKA_HASH" > "$FINKA_RUNTIME_DIR/runtime.ready"
 fi
 export PYTHONUTF8=1
+export PYTHONDONTWRITEBYTECODE=1
+export PYTHONNOUSERSITE=1
 finka_log '开始准备独立环境并运行助手。'
 "$FINKA_PYTHON" -u "$FINKA_SCRIPT_DIR/bootstrap.py" "$@"
 FINKA_RC=$?
+if [[ -f "$FINKA_WORK/.cleanup-request" && ! -L "$FINKA_WORK/.cleanup-request" && "$(cat "$FINKA_WORK/.cleanup-request")" == "$FINKA_MAGIC" ]]; then
+  finka_release_lock
+  FINKA_BOOT_LOG=''
+  zsh "$FINKA_BUNDLE/清理-Mac.command" --yes --no-pause
+  FINKA_CLEAN_RC=$?
+  if [[ "$FINKA_CLEAN_RC" != 0 ]]; then
+    print '安装流程已结束，但工作区清理未完成；请稍后双击清理入口重试。'
+    [[ "$FINKA_RC" != 0 ]] || FINKA_RC=2
+  fi
+fi
 exit "$FINKA_RC"

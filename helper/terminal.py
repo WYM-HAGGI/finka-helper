@@ -58,6 +58,9 @@ class PtySession:
     def returncode(self):
         return self.child.exitstatus if self.windows else self.child.poll()
 
+    def process_id(self):
+        return self.child.pid
+
     def close(self):
         if self.windows:
             self.child.close(force=True)

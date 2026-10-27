@@ -6,10 +6,12 @@ from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from helper.workspace import prepare_environment, register_process, clear_process
 from helper.common import Log, data_root, platform_key
 
 
 def main():
+    prepare_environment()
     log = Log(data_root() / "logs" / ("bootstrap-" + datetime.now().strftime("%Y%m%d-%H%M%S")))
     if not (3, 11) <= sys.version_info[:2] <= (3, 14):
         raise RuntimeError("需要 Python 3.11—3.14；请使用双击启动文件自动准备运行时。")
@@ -29,8 +31,11 @@ def main():
 
 
 if __name__ == "__main__":
+    process_record = register_process(data_root(), "bootstrap")
     try:
         raise SystemExit(main())
     except Exception as error:
         print("环境准备失败：", str(error), flush=True)
         raise SystemExit(1)
+    finally:
+        clear_process(process_record)

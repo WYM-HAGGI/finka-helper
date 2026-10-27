@@ -40,17 +40,8 @@ def platform_key():
 
 
 def data_root():
-    if os.environ.get("FINKA_HELPER_DATA"):
-        root = Path(os.environ["FINKA_HELPER_DATA"]).expanduser().absolute()
-        root.mkdir(parents=True, exist_ok=True, mode=0o700)
-        return root
-    if os.name == "nt":
-        base = Path(os.environ.get("LOCALAPPDATA", str(Path.home() / "AppData/Local")))
-    else:
-        base = Path.home() / "Library/Application Support"
-    root = base / "FinkaHelper"
-    root.mkdir(parents=True, exist_ok=True, mode=0o700)
-    return root
+    from helper.workspace import workspace_root
+    return workspace_root(ROOT)
 
 
 def sha256(path):
@@ -98,7 +89,7 @@ def fetch_verified(asset, destination, log):
     destination.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     partial = destination.with_name(destination.name + ".partial")
     request = urllib.request.Request(asset["url"], headers={"User-Agent": "FinkaHelper/1.0"})
-    log.event("TOOL_DOWNLOAD", "正在从官方发布地址下载所需工具。", expected_bytes=asset["size"])
+    log.event("TOOL_DOWNLOAD", "正在从固定发布地址下载并校验所需工具。", expected_bytes=asset["size"])
     try:
         with urllib.request.urlopen(request, timeout=45, context=context()) as response, partial.open("wb") as out:
             total, tick = 0, time.monotonic()
@@ -113,7 +104,7 @@ def fetch_verified(asset, destination, log):
     if sha256(partial) != asset["sha256"]:
         raise HelperError("CHECKSUM_FAILED", "工具 SHA-256 不匹配，已停止执行；请删除该工具的 .partial 文件后重试。")
     partial.replace(destination)
-    log.event("TOOL_VERIFIED", "官方工具 SHA-256 校验通过。")
+    log.event("TOOL_VERIFIED", "工具 SHA-256 校验通过。")
     return destination
 
 
@@ -130,7 +121,7 @@ def ensure_ipatool(log):
         members = [m for m in tar.getmembers() if m.isfile() and Path(m.name).name.startswith("ipatool-")
                    and not Path(m.name).name.endswith((".md", ".txt", ".json"))]
         if len(members) != 1:
-            raise HelperError("TOOL_ARCHIVE", "官方工具压缩包结构与预期不符，已停止。")
+            raise HelperError("TOOL_ARCHIVE", "工具压缩包结构与预期不符，已停止。")
         with tar.extractfile(members[0]) as src, executable.open("wb") as out:
             while chunk := src.read(1048576):
                 out.write(chunk)

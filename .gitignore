@@ -12,3 +12,5 @@ downloads/
 dist/
 .ipatool/
 .pymobiledevice3/
+.finka-work/
+build/

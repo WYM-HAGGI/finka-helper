@@ -18,6 +18,7 @@ from helper.auth import Controller, ERROR_TEXT
 from helper.common import (HelperError, Log, MANIFEST, ROOT, data_root, ensure_ipatool,
                            ensure_package, notify, platform_key, redact, run_process)
 from helper.package import inspect_package, valid_cached_package
+from helper.workspace import prepare_environment, request_cleanup, register_process, clear_process
 
 APPLE_DEVICES = "https://apps.microsoft.com/detail/9NP83LWLPZ9K"
 
@@ -96,6 +97,12 @@ def worker(arguments, log):
     process = subprocess.Popen([sys.executable, "-u", "-m", "helper.device_worker", *map(str, arguments)],
                                cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                encoding="utf-8", errors="replace")
+    try:
+        process_record = register_process(data_root(), "worker", process.pid)
+    except BaseException:
+        process.terminate()
+        process.wait(timeout=5)
+        raise
     import queue
     import threading
     messages = queue.Queue()
@@ -143,6 +150,8 @@ def worker(arguments, log):
         except subprocess.TimeoutExpired:
             process.kill()
         raise
+    finally:
+        clear_process(process_record)
     failure = next((e for e in reversed(events) if e.get("event") == "error"), None)
     if code or failure:
         error_type = failure.get("error_type", "") if failure else "USB_WORKER"
@@ -212,13 +221,15 @@ def main(argv=None):
     parser.add_argument("--download-only", action="store_true", help="只下载不安装")
     args = parser.parse_args(argv)
     os.umask(0o077)
+    prepare_environment()
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     run = data_root() / "logs" / stamp
     log = Log(run)
     result = {"tool_version": MANIFEST["version"], "status": "started", "app_id": MANIFEST["app_id"]}
     controller = None
     print("翻咔下载与安装助手 " + MANIFEST["version"])
-    print("首次运行将从官方来源准备组件。账号密码和验证码只在本机输入，不记录到日志。")
+    print("首次运行将准备并校验独立组件。账号密码和验证码只在本机输入，不记录到日志。")
+    print("所有工作数据位于解压目录内的 .finka-work；安装后可选择清理。")
     print("需要曾经获取翻咔的 Apple 帐号；Apple 是否继续提供下载由账号资格和服务器决定。")
     try:
         key = environment(log)
@@ -230,7 +241,7 @@ def main(argv=None):
             result.update(status="environment_ready", platform=key, iphone_driver_check="deferred_until_device_connection")
             log.event("DOCTOR_OK", "环境与组件检测完成；未登录，也未操作手机。")
             return 0
-        print("ipatool 会使用本机钥匙串或加密登录缓存；不会把凭据上传给工具作者。")
+        print("本次登录使用工作目录内的独立认证缓存，不使用系统钥匙串；正常退出会删除该缓存。")
         email = answer("最初获取翻咔的 Apple 帐号（邮箱或手机号）：")
         if not email:
             raise HelperError("EMPTY_ACCOUNT", "未输入 Apple 帐号，已停止。")
@@ -242,7 +253,7 @@ def main(argv=None):
         output = data_root() / "downloads" / owner
         output.mkdir(parents=True, exist_ok=True, mode=0o700)
         package, metadata = output / "翻咔-Apple原包.ipa", output / "安装包校验.json"
-        controller = Controller(executable, log)
+        controller = Controller(executable, log, portable=True)
         controller.login(email, password)
         password = ""  # No credentials are passed to a process command line or written by this helper.
         record = valid_cached_package(package, metadata, owner)
@@ -285,10 +296,31 @@ def main(argv=None):
         return 1
     finally:
         if controller:
-            controller.cache_phrase = None
+            try:
+                controller.close_private_state()
+                log.event("AUTH_CACHE_REMOVED", "本次独立登录缓存已删除。")
+            except (OSError, RuntimeError) as error:
+                log.event("AUTH_CACHE_REMAINS", "本次登录缓存清理未完成，请稍后运行清理入口。", reason=str(error))
+                result["auth_cleanup"] = "retry_with_cleanup_entry"
+        if result["status"] in ("installed_and_readback_verified", "existing_application_preserved"):
+            try:
+                print("\n安装流程已结束。清理会永久删除工作区中的IPA、专用运行环境、缓存和日志。")
+                print("若需保留IPA或日志，请先复制到其他目录。清理不会卸载手机里的翻咔。")
+                if answer("输入 C 清理全部工作数据；直接回车保留：").lower() == "c":
+                    request_cleanup()
+                    result["cleanup"] = "requested_after_process_exit"
+                    print("已请求清理，启动窗口将在当前进程退出后执行。")
+            except (KeyboardInterrupt, EOFError):
+                print("\n已保留工作数据。稍后可双击清理入口。")
+            except (OSError, RuntimeError) as error:
+                log.event("CLEANUP_REQUEST_FAILED", "未能创建清理请求，请稍后双击清理入口。", reason=str(error))
         (run / "执行结果.json").write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         print("\n结果：" + result["status"] + "\n脱敏日志：" + str(run), flush=True)
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    process_record = register_process(data_root(), "main")
+    try:
+        raise SystemExit(main())
+    finally:
+        clear_process(process_record)

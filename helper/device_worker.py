@@ -5,6 +5,17 @@ import json
 from pathlib import Path
 
 
+def private_pairing_options():
+    from helper.common import data_root
+    from pymobiledevice3.lockdown import LockdownClient, PlistUsbmuxLockdownClient
+    # This short-lived worker must not add a copy to the shared usbmuxd database.
+    # Existing system trust records may still be read, and are never removed.
+    PlistUsbmuxLockdownClient.save_pair_record = LockdownClient.save_pair_record
+    folder = data_root() / "pairing"
+    folder.mkdir(exist_ok=True, mode=0o700)
+    return {"pairing_records_cache_folder": folder}
+
+
 def emit(**data):
     print(json.dumps(data, ensure_ascii=False), flush=True)
 
@@ -13,12 +24,13 @@ async def devices():
     from pymobiledevice3.usbmux import list_devices
     from pymobiledevice3.lockdown import create_using_usbmux
     found = []
+    options = private_pairing_options()
     for device in await list_devices():
         if not device.is_usb:
             continue
         lock = None
         try:
-            lock = await create_using_usbmux(serial=device.serial, connection_type="USB", pair_timeout=25)
+            lock = await create_using_usbmux(serial=device.serial, connection_type="USB", pair_timeout=25, **options)
             values = lock.all_values
             if values.get("ProductType", "").startswith("iPhone"):
                 found.append({"udid": device.serial, "name": values.get("DeviceName", "iPhone"),
@@ -35,7 +47,8 @@ async def install(args):
     from helper.package import inspect_package
     from helper.common import MANIFEST
     package = inspect_package(args.package)["app"]
-    lock = await create_using_usbmux(serial=args.device, connection_type="USB", pair_timeout=25)
+    lock = await create_using_usbmux(serial=args.device, connection_type="USB", pair_timeout=25,
+                                    **private_pairing_options())
     try:
         def version_tuple(value):
             parts = tuple(int(p) for p in value.split("."))

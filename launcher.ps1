@@ -3,6 +3,9 @@ $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 [Console]::InputEncoding = [System.Text.UTF8Encoding]::new($false)
 $env:PYTHONUTF8 = '1'
+$env:PYTHONDONTWRITEBYTECODE = '1'
+$env:PYTHONNOUSERSITE = '1'
+. (Join-Path $PSScriptRoot 'scripts/Workspace.ps1')
 $FinkaBootstrapLog = $null
 function Write-FinkaStage([string]$Message) {
     Write-Host $Message
@@ -24,8 +27,15 @@ try {
     }
     elseif ($FinkaMachine -match 'AMD64') { $FinkaPlatform = 'windows-x64' }
     else { throw 'Only Windows x64 and ARM64 are supported.' }
-    $FinkaDataDir = $env:FINKA_HELPER_DATA
-    if (-not $FinkaDataDir) { $FinkaDataDir = Join-Path $env:LOCALAPPDATA 'FinkaHelper' }
+    $FinkaDataDir = Initialize-FinkaWorkspace $PSScriptRoot
+    Enter-FinkaWorkspaceLock $PSScriptRoot
+    $FinkaOldRequest = Join-Path $FinkaDataDir '.cleanup-request'
+    $FinkaOldRequestItem = Get-Item -LiteralPath $FinkaOldRequest -Force -ErrorAction SilentlyContinue
+    if ($FinkaOldRequestItem) {
+        if (($FinkaOldRequestItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -or $FinkaOldRequestItem.PSIsContainer -or
+            ((Get-Content -LiteralPath $FinkaOldRequest -Raw).Trim() -ne $FinkaWorkspaceMagic)) { throw 'Unknown cleanup request. Startup stopped.' }
+        Remove-Item -LiteralPath $FinkaOldRequest -ErrorAction Stop
+    }
     $FinkaLogDir = Join-Path $FinkaDataDir 'logs'
     New-Item -ItemType Directory -Force -Path $FinkaLogDir | Out-Null
     $FinkaBootstrapLog = Join-Path $FinkaLogDir ('launcher-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.log')
@@ -65,10 +75,19 @@ try {
     } finally { Pop-Location }
     Write-FinkaStage ('[Result] Helper exit code: ' + $FinkaExitCode)
     Write-Host ('Launcher log: ' + $FinkaBootstrapLog)
+    $FinkaCleanupRequest = Join-Path $FinkaDataDir '.cleanup-request'
+    if ((Test-Path -LiteralPath $FinkaCleanupRequest) -and ((Get-Content -LiteralPath $FinkaCleanupRequest -Raw).Trim() -eq $FinkaWorkspaceMagic)) {
+        Exit-FinkaWorkspaceLock $PSScriptRoot
+        $FinkaBootstrapLog = $null
+        & powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'cleanup.ps1') -Yes
+        if ($LASTEXITCODE -ne 0 -and $FinkaExitCode -eq 0) { $FinkaExitCode = 2 }
+    }
     exit $FinkaExitCode
 } catch {
     Write-FinkaStage ('[Failed] ' + $_.Exception.Message)
     if ($FinkaBootstrapLog) { Write-Host ('Launcher log: ' + $FinkaBootstrapLog) }
     Write-Host 'Extract the whole ZIP first. Check network access to github.com and pypi.org, then retry.'
     exit 1
+} finally {
+    Exit-FinkaWorkspaceLock $PSScriptRoot
 }

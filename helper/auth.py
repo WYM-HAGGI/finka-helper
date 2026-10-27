@@ -2,6 +2,7 @@
 import getpass
 import json
 import re
+import secrets
 import time
 from dataclasses import dataclass
 
@@ -70,19 +71,40 @@ ERROR_TEXT = {
 
 class Controller:
     def __init__(self, executable, log, session_factory=PtySession, read_code=code_input,
-                 read_password=getpass.getpass, sleep=time.sleep, otp_timeout=180):
+                 read_password=getpass.getpass, sleep=time.sleep, otp_timeout=180, portable=False):
         self.executable, self.log = executable, log
         self.session_factory, self.read_code = session_factory, read_code
         self.read_password, self.sleep = read_password, sleep
         self.otp_timeout = otp_timeout
         self.cache_phrase = None
+        self.private_directory = None
+        self.private_root = None
+        if portable:
+            from helper.common import data_root
+            from helper.workspace import new_auth_session
+            self.private_root = data_root()
+            self.private_directory = new_auth_session(self.private_root)
+            self.cache_phrase = secrets.token_urlsafe(32)
+            self.log.secrets.add(self.cache_phrase)
+
+    def close_private_state(self):
+        if self.private_directory is not None:
+            from helper.workspace import remove_auth_session
+            remove_auth_session(self.private_directory, self.private_root)
+            self.private_directory = None
+        self.cache_phrase = None
 
     def run(self, arguments, email="", password="", mode="login"):
-        session = self.session_factory([self.executable, "--format", "json", *arguments])
+        private = ["--finka-state-directory", str(self.private_directory)] if self.private_directory else []
+        session = self.session_factory([self.executable, *private, "--format", "json", *arguments])
         pending, history, otp_sent = "", "", False
         last_data, last_notice = time.monotonic(), time.monotonic()
         succeeded = False
+        process_record = None
         try:
+            if self.private_directory and hasattr(session, "process_id"):
+                from helper.workspace import register_process
+                process_record = register_process(self.private_root, "auth", session.process_id())
             while True:
                 try:
                     chunk = session.read(0.2)
@@ -163,6 +185,8 @@ class Controller:
                     return Outcome("failed", reason, otp_sent)
         finally:
             session.close()
+            from helper.workspace import clear_process
+            clear_process(process_record)
 
     def login(self, email, password, attempts=3):
         self.log.secrets.update((email, password))
