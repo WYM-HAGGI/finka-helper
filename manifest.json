@@ -1,5 +1,5 @@
 {
-  "version": "1.0.0",
+  "version": "1.1.0",
   "app_id": 898533490,
   "bundle_id": "com.wealoha.aloha",
   "pymobiledevice3": "11.43.1",
@@ -12,10 +12,10 @@
         "relative_executable": "python/bin/python3"
       },
       "ipatool": {
-        "url": "https://github.com/majd/ipatool/releases/download/v2.7.0/ipatool-2.7.0-macos-arm64.tar.gz",
-        "sha256": "5ae100d4520cf4b3f4374239e5925a9ad9a8dc02abc16bae27479e7ae99aca33",
-        "size": 18443165,
-        "version": "2.7.0"
+        "url": "https://github.com/WYM-HAGGI/finka-helper/releases/download/v1.1.0/ipatool-finka-macos-arm64.tar.gz",
+        "sha256": "24b94e449113205c0c2aef74a32bcbfc6c160284345620ebd154e8fed79643c2",
+        "size": 5704811,
+        "version": "2.7.0-finka-portable.1"
       }
     },
     "macos-x64": {
@@ -26,10 +26,10 @@
         "relative_executable": "python/bin/python3"
       },
       "ipatool": {
-        "url": "https://github.com/majd/ipatool/releases/download/v2.7.0/ipatool-2.7.0-macos-amd64.tar.gz",
-        "sha256": "05f48994d8b3cfefe7ea1172a0ac0b28715888e9df0af38cf3e490d2ed592263",
-        "size": 19651738,
-        "version": "2.7.0"
+        "url": "https://github.com/WYM-HAGGI/finka-helper/releases/download/v1.1.0/ipatool-finka-macos-x64.tar.gz",
+        "sha256": "192db14c102e74c8f96fd7cad0fab97251b07fe69820c31d62426d800730ec52",
+        "size": 6208276,
+        "version": "2.7.0-finka-portable.1"
       }
     },
     "windows-x64": {
@@ -40,10 +40,10 @@
         "relative_executable": "python/python.exe"
       },
       "ipatool": {
-        "url": "https://github.com/majd/ipatool/releases/download/v2.7.0/ipatool-2.7.0-windows-amd64.tar.gz",
-        "sha256": "b729608716908be287c2e6972f9e8cd05f879810ae5d182fc856c9e57cca0dd5",
-        "size": 19471690,
-        "version": "2.7.0"
+        "url": "https://github.com/WYM-HAGGI/finka-helper/releases/download/v1.1.0/ipatool-finka-windows-x64.tar.gz",
+        "sha256": "b18947919247829e2a313a90afc5c589ace7cbb119293d9b67f3cbca0ee03e74",
+        "size": 6752532,
+        "version": "2.7.0-finka-portable.1"
       }
     }
   },

@@ -213,6 +213,7 @@ class InstallVerificationTests(Fixture):
         self.calls, self.events = calls, events
         with patch.dict(sys.modules, modules), \
              patch("helper.package.inspect_package", return_value={"app": app}), \
+             patch.object(device_worker, "private_pairing_options", return_value={"pairing_records_cache_folder": self.root / "pairing"}), \
              patch.object(device_worker, "emit", side_effect=lambda **kw: events.append(kw)):
             asyncio.run(device_worker.install(SimpleNamespace(package=package, device="SYNTHETIC-DEVICE")))
 
